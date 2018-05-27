@@ -1,6 +1,5 @@
-using Knet,Images;
-include(Pkg.dir("Knet","data","mnist.jl"))
-global atype = gpu()>=0 ? KnetArray{Float32} : Array{Float32}
+using Knet, Images;
+include("fractals.jl")
 
 #A generic MLP function with customizable activation functions
 function mlp(w,x;p=0.0,activation=leakyrelu,outputactivation=sigm)
@@ -17,7 +16,7 @@ D(w,x;p=0.0) = mlp(w,x;p=p)  #  Discriminator
 G(w,z;p=0.0) = mlp(w,z;p=p)  #  Generator
 𝑱d(𝗪d,x,Gz) = -mean(log.(D(𝗪d,x)+𝜀)+log.(1-D(𝗪d,Gz)+𝜀))/2 # Discriminator Loss
 𝑱g(𝗪g, 𝗪d, z) = -mean(log.(D(𝗪d,G(𝗪g,z))+𝜀))             # Generator Loss
-𝒩(input, batch) = atype(randn(Float32, input, batch))      # SampleNoise
+𝒩(input, batch) = Array(randn(Float32, input, batch))      # SampleNoise
 
 ∇d  = grad(𝑱d) # Discriminator gradient
 ∇g  = grad(𝑱g) # Generator gradient
@@ -26,7 +25,7 @@ function initweights(hidden,input, output)
     𝗪 = Any[];
     x = input
     for h in [hidden... output]
-        push!(𝗪, atype(xavier(h,x)), atype(zeros(h, 1))) #FC Layers weights and bias
+        push!(𝗪, Array(xavier(h,x)), Array(zeros(h, 1))) #FC Layers weights and bias
         x = h
     end
     return 𝗪  #return model params
@@ -57,13 +56,12 @@ end
 
 function main()
     𝞗 = Dict(:batchsize=>32,:epochs=>75,:ginp=>256,:genh=>[512],:disch=>[512],:optim=>Adam,:lr=>0.002);
-    xtrn,ytrn,xtst,ytst = mnist()
-    global dtrn = minibatch(xtrn, ytrn, 𝞗[:batchsize]; xtype=atype)
-    global dtst = minibatch(xtst, ytst, 𝞗[:batchsize]; xtype=atype)
+
+    real_data = get_training_data(512)
+
     𝗪 = (𝗪g,𝗪d)   = initweights(𝞗[:genh], 𝞗[:ginp], 784), initweights(𝞗[:disch], 784, 1)
     𝚶 = (𝚶pg,𝚶pd)  = optimizers(𝗪g,𝞗[:optim];lr=𝞗[:lr]), optimizers(𝗪d,𝞗[:optim];lr=𝞗[:lr])
     runmodel(𝗪, dtst, 𝞗;optim=𝚶, train=false) # initial losses
     runmodel(𝗪, dtrn, 𝞗;optim=𝚶,train=true, dtst=dtst)  # training
     𝗪,𝚶,𝞗,(dtrn,dtst)    # return weights,optimizers,options and dataset
 end
-main() #enjoy!
